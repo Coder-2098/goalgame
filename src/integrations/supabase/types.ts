@@ -65,6 +65,7 @@ export type Database = {
       profiles: {
         Row: {
           ai_points: number | null
+          avatar_type: string | null
           avatar_url: string | null
           background_theme: string | null
           created_at: string
@@ -78,6 +79,7 @@ export type Database = {
         }
         Insert: {
           ai_points?: number | null
+          avatar_type?: string | null
           avatar_url?: string | null
           background_theme?: string | null
           created_at?: string
@@ -91,6 +93,7 @@ export type Database = {
         }
         Update: {
           ai_points?: number | null
+          avatar_type?: string | null
           avatar_url?: string | null
           background_theme?: string | null
           created_at?: string

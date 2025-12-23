@@ -4,11 +4,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ScoreBoard } from "@/components/game/ScoreBoard";
 import { GoalList } from "@/components/game/GoalList";
 import { CreateGoalDialog } from "@/components/game/CreateGoalDialog";
 import { VictoryAnimation } from "@/components/game/VictoryAnimation";
-import { LogOut, Plus, Settings, User } from "lucide-react";
+import { GameArena, type ThemeType, type AvatarType } from "@/components/game/GameArena";
+import { LogOut, Plus, Settings } from "lucide-react";
 
 interface Goal {
   id: string;
@@ -28,6 +28,8 @@ interface Profile {
   id: string;
   username: string | null;
   avatar_url: string | null;
+  avatar_type: AvatarType | null;
+  background_theme: ThemeType | null;
   total_points: number;
   ai_points: number;
 }
@@ -96,10 +98,27 @@ export default function Dashboard() {
     let message = "";
 
     if (goal.goal_type === "daily") {
-      // Daily task completed same day
-      userPoints = 5;
-      aiPoints = 5;
-      message = "Task completed! +5 points (AI also gets +5)";
+      // Check if daily goal has a due time
+      if (goal.due_time) {
+        const today = new Date().toISOString().split("T")[0];
+        const dueDateTime = new Date(`${today}T${goal.due_time}`);
+        if (now < dueDateTime) {
+          // Completed before time
+          userPoints = 20;
+          aiPoints = -5;
+          message = "Early completion! +20 points (AI loses 5)";
+        } else {
+          // Completed after time but same day
+          userPoints = 5;
+          aiPoints = 5;
+          message = "Task completed! +5 points (AI also gets +5)";
+        }
+      } else {
+        // Daily task completed same day (no specific time)
+        userPoints = 5;
+        aiPoints = 5;
+        message = "Task completed! +5 points (AI also gets +5)";
+      }
     } else if (goal.due_date && goal.due_time) {
       const dueDateTime = new Date(`${goal.due_date}T${goal.due_time}`);
       if (now < dueDateTime) {
@@ -261,6 +280,8 @@ export default function Dashboard() {
 
   const activeGoals = goals.filter((g) => !g.completed);
   const completedGoals = goals.filter((g) => g.completed);
+  const theme = (profile?.background_theme as ThemeType) || "forest";
+  const avatarType = (profile?.avatar_type as AvatarType) || "boy";
 
   return (
     <div className="min-h-screen bg-background">
@@ -292,11 +313,13 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Score Board */}
-        <ScoreBoard 
+        {/* Game Arena - replaces ScoreBoard */}
+        <GameArena 
+          theme={theme}
+          avatarType={avatarType}
           userPoints={profile?.total_points || 0} 
           aiPoints={profile?.ai_points || 0} 
-          username={profile?.username || "You"}
+          isActive={activeGoals.length > 0}
         />
 
         {/* Create Goal Button */}
