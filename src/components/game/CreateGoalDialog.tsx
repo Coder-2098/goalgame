@@ -48,7 +48,7 @@ export function CreateGoalDialog({ open, onOpenChange, onGoalCreated }: CreateGo
       description: description.trim() || null,
       goal_type: goalType,
       due_date: goalType === "long_term" && dueDate ? dueDate : null,
-      due_time: goalType === "long_term" && dueTime ? dueTime : null,
+      due_time: dueTime || null, // Now saved for both daily and long-term goals
     });
 
     if (error) {
@@ -139,6 +139,23 @@ export function CreateGoalDialog({ open, onOpenChange, onGoalCreated }: CreateGo
               rows={3}
             />
           </div>
+
+          {/* Due Time for Daily Goals */}
+          {goalType === "daily" && (
+            <div className="space-y-2">
+              <Label htmlFor="dailyDueTime" className="flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Complete By (Optional)
+              </Label>
+              <Input
+                id="dailyDueTime"
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Set a specific time to complete this task today</p>
+            </div>
+          )}
 
           {/* Due Date & Time (Long-term only) */}
           {goalType === "long_term" && (

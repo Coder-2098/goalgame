@@ -7,12 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, User, Bell, Clock, Save } from "lucide-react";
+import { ArrowLeft, User, Bell, Clock, Save, Palette, UserCircle } from "lucide-react";
+import { AvatarSelector } from "@/components/game/AvatarSelector";
+import { ThemeSelector } from "@/components/game/ThemeSelector";
+import type { ThemeType, AvatarType } from "@/components/game/GameArena";
 
 interface Profile {
   id: string;
   username: string | null;
   avatar_url: string | null;
+  avatar_type: AvatarType | null;
+  background_theme: ThemeType | null;
   notification_time: string | null;
   day_end_time: string | null;
 }
@@ -25,6 +30,8 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [username, setUsername] = useState("");
+  const [avatarType, setAvatarType] = useState<AvatarType>("boy");
+  const [backgroundTheme, setBackgroundTheme] = useState<ThemeType>("forest");
   const [notificationTime, setNotificationTime] = useState("19:00");
   const [dayEndTime, setDayEndTime] = useState("23:59");
 
@@ -55,8 +62,10 @@ export default function Settings() {
     }
 
     if (data) {
-      setProfile(data);
+      setProfile(data as Profile);
       setUsername(data.username || "");
+      setAvatarType((data.avatar_type as AvatarType) || "boy");
+      setBackgroundTheme((data.background_theme as ThemeType) || "forest");
       setNotificationTime(data.notification_time?.slice(0, 5) || "19:00");
       setDayEndTime(data.day_end_time?.slice(0, 5) || "23:59");
     }
@@ -71,6 +80,8 @@ export default function Settings() {
       .from("profiles")
       .update({
         username: username.trim() || null,
+        avatar_type: avatarType,
+        background_theme: backgroundTheme,
         notification_time: notificationTime + ":00",
         day_end_time: dayEndTime + ":00",
       })
@@ -136,6 +147,34 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground">Email cannot be changed</p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Avatar Selection */}
+        <Card className="bg-card/80">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <UserCircle className="w-5 h-5 text-secondary" />
+              Avatar
+            </CardTitle>
+            <CardDescription>Choose your game character</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AvatarSelector selected={avatarType} onChange={setAvatarType} />
+          </CardContent>
+        </Card>
+
+        {/* Theme Selection */}
+        <Card className="bg-card/80">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Palette className="w-5 h-5 text-primary" />
+              Game Theme
+            </CardTitle>
+            <CardDescription>Choose your arena background</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ThemeSelector selected={backgroundTheme} onChange={setBackgroundTheme} />
           </CardContent>
         </Card>
 
