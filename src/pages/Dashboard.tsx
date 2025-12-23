@@ -7,7 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { GoalList } from "@/components/game/GoalList";
 import { CreateGoalDialog } from "@/components/game/CreateGoalDialog";
 import { VictoryAnimation } from "@/components/game/VictoryAnimation";
-import { GameArena, type ThemeType, type AvatarType } from "@/components/game/GameArena";
+import { GameArena } from "@/components/game/GameArena";
+import { ThemeType, AvatarType, DEFAULT_THEME, DEFAULT_AVATAR } from "@/config/game";
 import { LogOut, Plus, Settings } from "lucide-react";
 
 interface Goal {
@@ -32,6 +33,7 @@ interface Profile {
   background_theme: ThemeType | null;
   total_points: number;
   ai_points: number;
+  day_end_time: string | null;
 }
 
 export default function Dashboard() {
@@ -43,6 +45,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showVictory, setShowVictory] = useState<{ show: boolean; points: number; message: string }>({ show: false, points: 0, message: "" });
+  const [isEndOfDay, setIsEndOfDay] = useState(false);
 
   const fetchGoals = useCallback(async () => {
     if (!user) return;
@@ -262,6 +265,39 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [handleMissedGoals]);
 
+  // Check for end of day
+  useEffect(() => {
+    if (!profile) return;
+
+    const checkEndOfDay = () => {
+      const now = new Date();
+      const dayEndTime = profile.day_end_time || "23:00";
+      const [hours, minutes] = dayEndTime.split(":").map(Number);
+      
+      const endOfDay = new Date();
+      endOfDay.setHours(hours, minutes, 0, 0);
+      
+      // Check if we're within 30 minutes of end of day
+      const timeDiff = endOfDay.getTime() - now.getTime();
+      const thirtyMinutes = 30 * 60 * 1000;
+      
+      if (timeDiff > 0 && timeDiff <= thirtyMinutes) {
+        setIsEndOfDay(true);
+      } else if (timeDiff <= 0 && timeDiff > -60000) {
+        // Just passed end of day, trigger final state
+        setIsEndOfDay(true);
+        // Reset after showing victory/defeat for 10 seconds
+        setTimeout(() => setIsEndOfDay(false), 10000);
+      } else {
+        setIsEndOfDay(false);
+      }
+    };
+
+    checkEndOfDay();
+    const interval = setInterval(checkEndOfDay, 60000);
+    return () => clearInterval(interval);
+  }, [profile]);
+
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
@@ -280,8 +316,8 @@ export default function Dashboard() {
 
   const activeGoals = goals.filter((g) => !g.completed);
   const completedGoals = goals.filter((g) => g.completed);
-  const theme = (profile?.background_theme as ThemeType) || "forest";
-  const avatarType = (profile?.avatar_type as AvatarType) || "boy";
+  const theme = (profile?.background_theme as ThemeType) || DEFAULT_THEME;
+  const avatarType = (profile?.avatar_type as AvatarType) || DEFAULT_AVATAR;
 
   return (
     <div className="min-h-screen bg-background">
@@ -320,6 +356,7 @@ export default function Dashboard() {
           userPoints={profile?.total_points || 0} 
           aiPoints={profile?.ai_points || 0} 
           isActive={activeGoals.length > 0}
+          isEndOfDay={isEndOfDay}
         />
 
         {/* Create Goal Button */}
