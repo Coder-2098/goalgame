@@ -73,9 +73,13 @@ export function GameArena({ theme, avatarType, userPoints, aiPoints, isActive = 
   const [showObstacle, setShowObstacle] = useState(false);
   const [obstacleType, setObstacleType] = useState(0);
 
-  const background = backgrounds[theme];
-  const avatar = avatars[avatarType];
-  const messages = themeMessages[theme];
+  // Fallback to 'forest' if theme is invalid
+  const validTheme: ThemeType = (theme in backgrounds) ? theme : "forest";
+  const validAvatar: AvatarType = (avatarType in avatars) ? avatarType : "boy";
+
+  const background = backgrounds[validTheme];
+  const avatar = avatars[validAvatar];
+  const messages = themeMessages[validTheme];
 
   // Calculate positions based on points difference
   useEffect(() => {
@@ -108,7 +112,7 @@ export function GameArena({ theme, avatarType, userPoints, aiPoints, isActive = 
   };
 
   const getObstacle = () => {
-    switch (theme) {
+    switch (validTheme) {
       case "forest":
         return ["🪨", "🌳", "🦎"][obstacleType];
       case "coding":
