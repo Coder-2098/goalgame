@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { backgrounds, type ThemeType } from "./GameArena";
+import { BACKGROUNDS, THEME_CONFIGS, ThemeType } from "@/config/game";
 import { Trees, Code, Swords, Crosshair } from "lucide-react";
 
 interface ThemeSelectorProps {
@@ -8,10 +8,10 @@ interface ThemeSelectorProps {
 }
 
 const themeOptions: { type: ThemeType; label: string; icon: React.ReactNode; description: string }[] = [
-  { type: "forest", label: "Forest Run", icon: <Trees className="w-5 h-5" />, description: "Temple Run style" },
-  { type: "coding", label: "Hacker", icon: <Code className="w-5 h-5" />, description: "Cyber warfare" },
-  { type: "ninja", label: "Ninja", icon: <Swords className="w-5 h-5" />, description: "Martial arts" },
-  { type: "agent", label: "Agent 007", icon: <Crosshair className="w-5 h-5" />, description: "Spy mission" },
+  { type: "forest", label: THEME_CONFIGS.forest.name, icon: <Trees className="w-5 h-5" />, description: THEME_CONFIGS.forest.description },
+  { type: "coding", label: THEME_CONFIGS.coding.name, icon: <Code className="w-5 h-5" />, description: THEME_CONFIGS.coding.description },
+  { type: "ninja", label: THEME_CONFIGS.ninja.name, icon: <Swords className="w-5 h-5" />, description: THEME_CONFIGS.ninja.description },
+  { type: "agent", label: THEME_CONFIGS.agent.name, icon: <Crosshair className="w-5 h-5" />, description: THEME_CONFIGS.agent.description },
 ];
 
 export function ThemeSelector({ selected, onChange }: ThemeSelectorProps) {
@@ -32,7 +32,7 @@ export function ThemeSelector({ selected, onChange }: ThemeSelectorProps) {
           {/* Background Preview */}
           <div 
             className="absolute inset-0 bg-cover bg-center opacity-30 group-hover:opacity-40 transition-opacity"
-            style={{ backgroundImage: `url(${backgrounds[type]})` }}
+            style={{ backgroundImage: `url(${BACKGROUNDS[type]})` }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
           

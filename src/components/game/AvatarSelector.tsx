@@ -1,18 +1,15 @@
 import { cn } from "@/lib/utils";
-import { avatars, type AvatarType } from "./GameArena";
+import { AVATARS, AVATAR_CONFIGS, AvatarType } from "@/config/game";
 
 interface AvatarSelectorProps {
   selected: AvatarType;
   onChange: (avatar: AvatarType) => void;
 }
 
-const avatarOptions: { type: AvatarType; label: string }[] = [
-  { type: "boy", label: "Boy" },
-  { type: "girl", label: "Girl" },
-  { type: "fighter", label: "Fighter" },
-  { type: "ninja", label: "Ninja" },
-  { type: "agent", label: "Agent" },
-];
+const avatarOptions: { type: AvatarType; label: string }[] = Object.values(AVATAR_CONFIGS).map(config => ({
+  type: config.id,
+  label: config.name,
+}));
 
 export function AvatarSelector({ selected, onChange }: AvatarSelectorProps) {
   return (
@@ -30,7 +27,7 @@ export function AvatarSelector({ selected, onChange }: AvatarSelectorProps) {
           )}
         >
           <img
-            src={avatars[type]}
+            src={AVATARS[type]}
             alt={label}
             className="w-12 h-12 rounded-full object-cover"
           />
