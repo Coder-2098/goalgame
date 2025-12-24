@@ -8,6 +8,7 @@ import { GoalList } from "@/components/game/GoalList";
 import { CreateGoalDialog } from "@/components/game/CreateGoalDialog";
 import { VictoryAnimation } from "@/components/game/VictoryAnimation";
 import { GameArena } from "@/components/game/GameArena";
+import { StreakBadge } from "@/components/game/StreakBadge";
 import { ThemeType, AvatarType, DEFAULT_THEME, DEFAULT_AVATAR } from "@/config/game";
 import { LogOut, Plus, Settings } from "lucide-react";
 
@@ -34,6 +35,9 @@ interface Profile {
   total_points: number;
   ai_points: number;
   day_end_time: string | null;
+  current_streak: number | null;
+  longest_streak: number | null;
+  sound_enabled: boolean | null;
 }
 
 export default function Dashboard() {
@@ -376,6 +380,12 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Streak Badge */}
+            <StreakBadge 
+              currentStreak={profile?.current_streak || 0}
+              longestStreak={profile?.longest_streak || 0}
+              compact
+            />
             <Button variant="ghost" size="icon" onClick={() => navigate("/settings")}>
               <Settings className="w-5 h-5" />
             </Button>
@@ -387,7 +397,7 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Game Arena - replaces ScoreBoard */}
+        {/* Game Arena */}
         <GameArena 
           theme={theme}
           avatarType={avatarType}
@@ -395,6 +405,7 @@ export default function Dashboard() {
           aiPoints={profile?.ai_points || 0} 
           isActive={activeGoals.length > 0}
           isEndOfDay={isEndOfDay}
+          soundEnabled={profile?.sound_enabled !== false}
         />
 
         {/* Create Goal Button */}

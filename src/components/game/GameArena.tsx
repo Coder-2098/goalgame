@@ -1,7 +1,6 @@
 /**
- * GameArena Component - Refactored with Strategy Pattern
- * Uses configuration from /config/game and strategies from /strategies/game
- * Features Temple Run-style continuous motion animations
+ * GameArena Component - Temple Run-style immersive game experience
+ * Features parallax backgrounds, obstacles, and dynamic animations
  */
 
 import { useEffect, useState, useMemo } from "react";
@@ -9,7 +8,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   ThemeType,
   AvatarType,
-  GameState,
   BACKGROUNDS,
   ACTION_SPRITES,
   AI_SPRITES,
@@ -19,6 +17,10 @@ import {
 } from "@/config/game";
 import { getGameStrategy, getEffectsStrategy } from "@/strategies/game";
 import { VictoryDance } from "./VictoryDance";
+import { ParallaxBackground } from "./ParallaxBackground";
+import { ObstacleLayer } from "./ObstacleLayer";
+import { SpeedLines } from "./SpeedLines";
+import { useSoundEffects } from "@/hooks/useSoundEffects";
 
 // Theme-specific motion animation classes
 const THEME_ANIMATIONS: Record<ThemeType, { user: string; ai: string }> = {
@@ -35,6 +37,7 @@ interface GameArenaProps {
   aiPoints: number;
   isActive?: boolean;
   isEndOfDay?: boolean;
+  soundEnabled?: boolean;
 }
 
 export function GameArena({
@@ -44,9 +47,15 @@ export function GameArena({
   aiPoints,
   isActive = true,
   isEndOfDay = false,
+  soundEnabled = true,
 }: GameArenaProps) {
   const [showEffect, setShowEffect] = useState(false);
   const [effectIndex, setEffectIndex] = useState(0);
+  const [prevGameState, setPrevGameState] = useState<string | null>(null);
+
+  // Sound effects
+  const { playSound, startAmbient, stopAmbient } = useSoundEffects(soundEnabled);
+  const [ambientId, setAmbientId] = useState<ReturnType<typeof setInterval> | null>(null);
 
   // Get strategies
   const gameStrategy = useMemo(() => getGameStrategy(), []);
@@ -70,6 +79,42 @@ export function GameArena({
   const userMovement = gameStrategy.calculateMovement(gameState, true);
   const aiMovement = gameStrategy.calculateMovement(gameState, false);
 
+  // Play sound effects on state changes
+  useEffect(() => {
+    if (prevGameState === null) {
+      setPrevGameState(gameState);
+      return;
+    }
+
+    if (gameState !== prevGameState) {
+      if (gameState === "victory") {
+        playSound("victory");
+      } else if (gameState === "defeat") {
+        playSound("defeat");
+      } else if (gameState === "userWinning" && prevGameState !== "userWinning") {
+        playSound("userLead");
+      } else if (gameState === "aiWinning" && prevGameState !== "aiWinning") {
+        playSound("aiLead");
+      }
+      setPrevGameState(gameState);
+    }
+  }, [gameState, prevGameState, playSound]);
+
+  // Ambient footsteps while active
+  useEffect(() => {
+    if (isActive && soundEnabled && !ambientId) {
+      const id = startAmbient("footsteps");
+      setAmbientId(id);
+    } else if ((!isActive || !soundEnabled) && ambientId) {
+      stopAmbient(ambientId);
+      setAmbientId(null);
+    }
+
+    return () => {
+      if (ambientId) stopAmbient(ambientId);
+    };
+  }, [isActive, soundEnabled, startAmbient, stopAmbient, ambientId]);
+
   // Show effects periodically
   useEffect(() => {
     if (!isActive && !isEndOfDay) return;
@@ -92,16 +137,42 @@ export function GameArena({
   const userWinning = gameState === "userWinning" || gameState === "victory";
   const aiWinning = gameState === "aiWinning" || gameState === "defeat";
 
+  // Determine speed intensity based on game state
+  const speedIntensity = userWinning ? "high" : aiWinning ? "low" : "medium";
+
   return (
     <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-border/30">
-      {/* Background */}
+      {/* Background Image */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-transform duration-1000"
         style={{ backgroundImage: `url(${background})` }}
       />
 
-      {/* Animated background overlay based on theme */}
+      {/* Parallax Scrolling Layers */}
+      <ParallaxBackground
+        theme={validTheme}
+        speed={config.backgroundSpeed}
+        isActive={isActive && !isVictoryState}
+        userWinning={userWinning}
+        aiWinning={aiWinning}
+      />
+
+      {/* Obstacles Layer */}
+      <ObstacleLayer
+        theme={validTheme}
+        isActive={isActive && !isVictoryState}
+        speed={config.characterSpeed}
+        aiWinning={aiWinning}
+      />
+
+      {/* Speed Lines for User */}
+      <div className="absolute left-8 md:left-16 top-1/2 -translate-y-1/2 z-5">
+        <SpeedLines isActive={isActive && !isVictoryState} intensity={speedIntensity} position="left" />
+      </div>
+
+      {/* Animated background overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-background/20" />
+
 
       {/* Victory/Defeat Overlay */}
       <AnimatePresence>
