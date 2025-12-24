@@ -134,8 +134,55 @@
 
   .score-display {
     @apply font-bold text-2xl;
-    text-shadow: 0 0 20px currentColor;
   }
+
+  /* Temple Run style running character */
+  .temple-run-character {
+    @apply relative;
+    transform-style: preserve-3d;
+  }
+
+  .temple-run-character::after {
+    content: '';
+    @apply absolute bottom-0 left-1/2 -translate-x-1/2 w-16 h-3 bg-black/30 rounded-full blur-sm;
+    animation: ground-shadow 0.3s ease-in-out infinite;
+  }
+}
+
+/* Temple Run Running Animation - Bouncy forward lean */
+@keyframes temple-run {
+  0%, 100% { 
+    transform: translateY(0) rotate(2deg) scaleX(1); 
+  }
+  15% { 
+    transform: translateY(-12px) rotate(5deg) scaleX(0.98); 
+  }
+  30% { 
+    transform: translateY(-8px) rotate(3deg) scaleX(1.02); 
+  }
+  50% { 
+    transform: translateY(0) rotate(2deg) scaleX(1); 
+  }
+  65% { 
+    transform: translateY(-10px) rotate(4deg) scaleX(0.99); 
+  }
+  80% { 
+    transform: translateY(-6px) rotate(3deg) scaleX(1.01); 
+  }
+}
+
+/* Leg movement simulation */
+@keyframes leg-cycle {
+  0%, 100% { transform: scaleY(1) translateY(0); }
+  25% { transform: scaleY(0.95) translateY(2px); }
+  50% { transform: scaleY(1.02) translateY(-2px); }
+  75% { transform: scaleY(0.98) translateY(1px); }
+}
+
+/* Wind/speed blur effect */
+@keyframes speed-blur {
+  0%, 100% { filter: blur(0px); transform: translateX(0); }
+  50% { filter: blur(0.5px); transform: translateX(-2px); }
 }
 
 @keyframes shimmer {

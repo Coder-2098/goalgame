@@ -69,9 +69,13 @@ export type Database = {
           avatar_url: string | null
           background_theme: string | null
           created_at: string
+          current_streak: number | null
           day_end_time: string | null
           id: string
+          last_goal_date: string | null
+          longest_streak: number | null
           notification_time: string | null
+          sound_enabled: boolean | null
           total_points: number | null
           updated_at: string
           user_id: string
@@ -83,9 +87,13 @@ export type Database = {
           avatar_url?: string | null
           background_theme?: string | null
           created_at?: string
+          current_streak?: number | null
           day_end_time?: string | null
           id?: string
+          last_goal_date?: string | null
+          longest_streak?: number | null
           notification_time?: string | null
+          sound_enabled?: boolean | null
           total_points?: number | null
           updated_at?: string
           user_id: string
@@ -97,9 +105,13 @@ export type Database = {
           avatar_url?: string | null
           background_theme?: string | null
           created_at?: string
+          current_streak?: number | null
           day_end_time?: string | null
           id?: string
+          last_goal_date?: string | null
+          longest_streak?: number | null
           notification_time?: string | null
+          sound_enabled?: boolean | null
           total_points?: number | null
           updated_at?: string
           user_id?: string
