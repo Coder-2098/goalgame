@@ -1,6 +1,7 @@
 /**
  * GameArena Component - Refactored with Strategy Pattern
  * Uses configuration from /config/game and strategies from /strategies/game
+ * Features Temple Run-style continuous motion animations
  */
 
 import { useEffect, useState, useMemo } from "react";
@@ -18,6 +19,14 @@ import {
 } from "@/config/game";
 import { getGameStrategy, getEffectsStrategy } from "@/strategies/game";
 import { VictoryDance } from "./VictoryDance";
+
+// Theme-specific motion animation classes
+const THEME_ANIMATIONS: Record<ThemeType, { user: string; ai: string }> = {
+  forest: { user: "animate-running", ai: "animate-running" },
+  coding: { user: "animate-coding", ai: "animate-coding" },
+  ninja: { user: "animate-ninja", ai: "animate-fighting" },
+  agent: { user: "animate-agent", ai: "animate-agent" },
+};
 
 interface GameArenaProps {
   theme: ThemeType;
@@ -51,6 +60,9 @@ export function GameArena({
   const userSprite = ACTION_SPRITES[validTheme];
   const aiSprite = AI_SPRITES[validTheme];
   const config = THEME_CONFIGS[validTheme];
+
+  // Get motion animation classes for the theme
+  const motionClasses = THEME_ANIMATIONS[validTheme];
 
   // Calculate game state using strategy
   const gameState = gameStrategy.getGameState(userPoints, aiPoints, isEndOfDay);
@@ -161,7 +173,7 @@ export function GameArena({
               </div>
             </motion.div>
 
-            {/* User Character - Left Side */}
+            {/* User Character - Left Side with continuous motion */}
             <motion.div
               className="absolute left-4 md:left-12"
               animate={isActive ? { x: userMovement.x, y: userMovement.y } : {}}
@@ -172,6 +184,10 @@ export function GameArena({
               }}
             >
               <div className="relative">
+                {/* Ground shadow that animates with running */}
+                {isActive && (
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-4 bg-black/30 rounded-full blur-sm animate-ground-shadow" />
+                )}
                 {userWinning && (
                   <div className="absolute inset-0 bg-primary/30 rounded-2xl blur-xl animate-pulse" />
                 )}
@@ -179,8 +195,8 @@ export function GameArena({
                   src={userSprite}
                   alt="You"
                   className={`w-28 h-28 md:w-36 md:h-36 object-contain drop-shadow-2xl ${
-                    userWinning ? "brightness-110" : aiWinning ? "brightness-75" : ""
-                  }`}
+                    isActive ? motionClasses.user : "animate-idle"
+                  } ${userWinning ? "brightness-110" : aiWinning ? "brightness-75" : ""}`}
                 />
                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded-full font-bold shadow-lg">
                   YOU
@@ -188,7 +204,7 @@ export function GameArena({
               </div>
             </motion.div>
 
-            {/* AI Character - Right Side */}
+            {/* AI Character - Right Side with continuous motion */}
             <motion.div
               className="absolute right-4 md:right-12"
               animate={isActive ? { x: aiMovement.x, y: aiMovement.y } : {}}
@@ -200,6 +216,10 @@ export function GameArena({
               }}
             >
               <div className="relative">
+                {/* Ground shadow that animates with running */}
+                {isActive && (
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-20 h-4 bg-black/30 rounded-full blur-sm animate-ground-shadow" />
+                )}
                 {aiWinning && (
                   <div className="absolute inset-0 bg-destructive/30 rounded-2xl blur-xl animate-pulse" />
                 )}
@@ -207,8 +227,8 @@ export function GameArena({
                   src={aiSprite}
                   alt="AI"
                   className={`w-28 h-28 md:w-36 md:h-36 object-contain drop-shadow-2xl ${
-                    aiWinning ? "brightness-110" : userWinning ? "brightness-75" : ""
-                  }`}
+                    isActive ? motionClasses.ai : "animate-idle"
+                  } ${aiWinning ? "brightness-110" : userWinning ? "brightness-75" : ""}`}
                 />
                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground text-xs px-2 py-0.5 rounded-full font-bold shadow-lg">
                   AI
