@@ -92,6 +92,50 @@ export default function Dashboard() {
     }
   }, [user, authLoading, navigate, fetchGoals, fetchProfile]);
 
+  // Real-time subscription for goals and profiles
+  useEffect(() => {
+    if (!user) return;
+
+    // Subscribe to goals changes
+    const goalsChannel = supabase
+      .channel('goals-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'goals',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchGoals();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to profile changes
+    const profileChannel = supabase
+      .channel('profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          fetchProfile();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(goalsChannel);
+      supabase.removeChannel(profileChannel);
+    };
+  }, [user, fetchGoals, fetchProfile]);
+
   const handleCompleteGoal = async (goal: Goal) => {
     if (!user || !profile) return;
 
@@ -201,25 +245,34 @@ export default function Dashboard() {
     fetchGoals();
   };
 
+  // Check for missed goals using local time and user's EOD setting
   const handleMissedGoals = useCallback(async () => {
     if (!user || !profile) return;
 
     const now = new Date();
+    const dayEndTime = profile.day_end_time || "23:59";
+    const [eodHours, eodMinutes] = dayEndTime.split(":").map(Number);
+
     const missedGoals = goals.filter((goal) => {
       if (goal.completed) return false;
+
+      const createdDate = new Date(goal.created_at);
+      
       if (goal.goal_type === "daily") {
-        // Check if it's past the day
-        const createdDate = new Date(goal.created_at);
-        createdDate.setHours(23, 59, 59);
-        return now > createdDate;
+        // For daily goals, deadline is user's EOD on the creation date
+        const deadline = new Date(createdDate);
+        deadline.setHours(eodHours, eodMinutes, 0, 0);
+        return now > deadline;
       }
+
       if (goal.due_date) {
         const dueDate = new Date(goal.due_date);
         if (goal.due_time) {
           const [hours, minutes] = goal.due_time.split(":");
-          dueDate.setHours(parseInt(hours), parseInt(minutes));
+          dueDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         } else {
-          dueDate.setHours(23, 59, 59);
+          // Use user's EOD if no specific time
+          dueDate.setHours(eodHours, eodMinutes, 0, 0);
         }
         return now > dueDate;
       }
@@ -228,35 +281,20 @@ export default function Dashboard() {
 
     if (missedGoals.length === 0) return;
 
-    const totalAiPoints = missedGoals.length * 15;
-
-    // Mark goals as missed (completed with 0 user points)
+    // Trigger update on each missed goal - the database trigger will handle the AI points
     for (const goal of missedGoals) {
       await supabase
         .from("goals")
-        .update({
-          completed: true,
-          ai_points_earned: 15,
-        })
+        .update({ updated_at: new Date().toISOString() })
         .eq("id", goal.id);
     }
 
-    // Update AI points
-    await supabase
-      .from("profiles")
-      .update({
-        ai_points: (profile.ai_points || 0) + totalAiPoints,
-      })
-      .eq("user_id", user.id);
-
     toast({
-      title: "Missed Goals!",
-      description: `AI gained ${totalAiPoints} points from ${missedGoals.length} missed goal(s)`,
+      title: "⏰ Time's Up!",
+      description: `AI gained ${missedGoals.length * 15} points from ${missedGoals.length} missed goal(s)!`,
       variant: "destructive",
     });
-
-    await Promise.all([fetchGoals(), fetchProfile()]);
-  }, [goals, user, profile, toast, fetchGoals, fetchProfile]);
+  }, [goals, user, profile, toast]);
 
   useEffect(() => {
     // Check for missed goals periodically

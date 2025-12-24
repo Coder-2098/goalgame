@@ -112,7 +112,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_all_overdue_goals: { Args: never; Returns: undefined }
     }
     Enums: {
       [_ in never]: never
