@@ -1,6 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Check, Trash2, Clock, Calendar, Target, CheckCircle2 } from "lucide-react";
+import { Check, Trash2, Clock, Calendar, Target, CheckCircle2, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 interface Goal {
@@ -22,11 +22,12 @@ interface GoalListProps {
   goals: Goal[];
   onComplete?: (goal: Goal) => void;
   onDelete?: (goalId: string) => void;
+  onEdit?: (goal: Goal) => void;
   emptyMessage?: string;
   showCompleted?: boolean;
 }
 
-export function GoalList({ title, goals, onComplete, onDelete, emptyMessage, showCompleted }: GoalListProps) {
+export function GoalList({ title, goals, onComplete, onDelete, onEdit, emptyMessage, showCompleted }: GoalListProps) {
   if (goals.length === 0 && !showCompleted) {
     return (
       <Card className="bg-card/50">
@@ -124,16 +125,32 @@ export function GoalList({ title, goals, onComplete, onDelete, emptyMessage, sho
                   </div>
                 </div>
 
-                {/* Delete Button */}
-                {onDelete && !goal.completed && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="flex-shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => onDelete(goal.id)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                {/* Action Buttons */}
+                {!goal.completed && (
+                  <div className="flex items-center gap-1">
+                    {/* Edit Button */}
+                    {onEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0 text-muted-foreground hover:text-primary"
+                        onClick={() => onEdit(goal)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                    )}
+                    {/* Delete Button */}
+                    {onDelete && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => onDelete(goal.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                  </div>
                 )}
               </div>
             </CardContent>
