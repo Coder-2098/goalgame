@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { GoalList } from "@/components/game/GoalList";
 import { CreateGoalDialog } from "@/components/game/CreateGoalDialog";
+import { EditGoalDialog } from "@/components/game/EditGoalDialog";
 import { VictoryAnimation } from "@/components/game/VictoryAnimation";
 import { GameArena } from "@/components/game/GameArena";
 import { StreakBadge } from "@/components/game/StreakBadge";
@@ -48,6 +49,7 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [showVictory, setShowVictory] = useState<{ show: boolean; points: number; message: string }>({ show: false, points: 0, message: "" });
   const [isEndOfDay, setIsEndOfDay] = useState(false);
 
@@ -100,7 +102,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (!user) return;
 
-    // Subscribe to goals changes
     const goalsChannel = supabase
       .channel('goals-changes')
       .on(
@@ -117,7 +118,6 @@ export default function Dashboard() {
       )
       .subscribe();
 
-    // Subscribe to profile changes
     const profileChannel = supabase
       .channel('profile-changes')
       .on(
@@ -149,23 +149,19 @@ export default function Dashboard() {
     let message = "";
 
     if (goal.goal_type === "daily") {
-      // Check if daily goal has a due time
       if (goal.due_time) {
         const today = new Date().toISOString().split("T")[0];
         const dueDateTime = new Date(`${today}T${goal.due_time}`);
         if (now < dueDateTime) {
-          // Completed before time
           userPoints = 20;
           aiPoints = -5;
           message = "Early completion! +20 points (AI loses 5)";
         } else {
-          // Completed after time but same day
           userPoints = 5;
           aiPoints = 5;
           message = "Task completed! +5 points (AI also gets +5)";
         }
       } else {
-        // Daily task completed same day (no specific time)
         userPoints = 5;
         aiPoints = 5;
         message = "Task completed! +5 points (AI also gets +5)";
@@ -173,12 +169,10 @@ export default function Dashboard() {
     } else if (goal.due_date && goal.due_time) {
       const dueDateTime = new Date(`${goal.due_date}T${goal.due_time}`);
       if (now < dueDateTime) {
-        // Completed before time
         userPoints = 20;
         aiPoints = -5;
         message = "Early completion! +20 points (AI loses 5)";
       } else {
-        // Completed on time
         userPoints = 10;
         aiPoints = 0;
         message = "On-time completion! +10 points";
@@ -187,12 +181,10 @@ export default function Dashboard() {
       const dueDate = new Date(goal.due_date);
       dueDate.setHours(23, 59, 59);
       if (now <= dueDate) {
-        // Completed on/before due date
         userPoints = 10;
         aiPoints = 0;
         message = "Goal achieved! +10 points";
       } else {
-        // Late completion (still counts, but less points)
         userPoints = 5;
         aiPoints = 5;
         message = "Late completion! +5 points (AI gets +5)";
@@ -202,7 +194,6 @@ export default function Dashboard() {
       message = "Goal completed! +10 points";
     }
 
-    // Update the goal
     const { error: goalError } = await supabase
       .from("goals")
       .update({
@@ -218,7 +209,6 @@ export default function Dashboard() {
       return;
     }
 
-    // Update profile points
     const { error: profileError } = await supabase
       .from("profiles")
       .update({
@@ -249,7 +239,11 @@ export default function Dashboard() {
     fetchGoals();
   };
 
-  // Check for missed goals using local time and user's EOD setting
+  const handleEditGoal = (goal: Goal) => {
+    setEditingGoal(goal);
+  };
+
+  // Check for missed goals
   const handleMissedGoals = useCallback(async () => {
     if (!user || !profile) return;
 
@@ -263,7 +257,6 @@ export default function Dashboard() {
       const createdDate = new Date(goal.created_at);
       
       if (goal.goal_type === "daily") {
-        // For daily goals, deadline is user's EOD on the creation date
         const deadline = new Date(createdDate);
         deadline.setHours(eodHours, eodMinutes, 0, 0);
         return now > deadline;
@@ -275,7 +268,6 @@ export default function Dashboard() {
           const [hours, minutes] = goal.due_time.split(":");
           dueDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         } else {
-          // Use user's EOD if no specific time
           dueDate.setHours(eodHours, eodMinutes, 0, 0);
         }
         return now > dueDate;
@@ -285,7 +277,6 @@ export default function Dashboard() {
 
     if (missedGoals.length === 0) return;
 
-    // Trigger update on each missed goal - the database trigger will handle the AI points
     for (const goal of missedGoals) {
       await supabase
         .from("goals")
@@ -301,9 +292,8 @@ export default function Dashboard() {
   }, [goals, user, profile, toast]);
 
   useEffect(() => {
-    // Check for missed goals periodically
-    const interval = setInterval(handleMissedGoals, 60000); // Every minute
-    handleMissedGoals(); // Initial check
+    const interval = setInterval(handleMissedGoals, 60000);
+    handleMissedGoals();
     return () => clearInterval(interval);
   }, [handleMissedGoals]);
 
@@ -319,16 +309,13 @@ export default function Dashboard() {
       const endOfDay = new Date();
       endOfDay.setHours(hours, minutes, 0, 0);
       
-      // Check if we're within 30 minutes of end of day
       const timeDiff = endOfDay.getTime() - now.getTime();
       const thirtyMinutes = 30 * 60 * 1000;
       
       if (timeDiff > 0 && timeDiff <= thirtyMinutes) {
         setIsEndOfDay(true);
       } else if (timeDiff <= 0 && timeDiff > -60000) {
-        // Just passed end of day, trigger final state
         setIsEndOfDay(true);
-        // Reset after showing victory/defeat for 10 seconds
         setTimeout(() => setIsEndOfDay(false), 10000);
       } else {
         setIsEndOfDay(false);
@@ -363,7 +350,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Victory Animation */}
       {showVictory.show && <VictoryAnimation points={showVictory.points} message={showVictory.message} />}
 
       {/* Header */}
@@ -380,7 +366,6 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Streak Badge */}
             <StreakBadge 
               currentStreak={profile?.current_streak || 0}
               longestStreak={profile?.longest_streak || 0}
@@ -397,7 +382,6 @@ export default function Dashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 space-y-6">
-        {/* Game Arena */}
         <GameArena 
           theme={theme}
           avatarType={avatarType}
@@ -408,7 +392,6 @@ export default function Dashboard() {
           soundEnabled={profile?.sound_enabled !== false}
         />
 
-        {/* Create Goal Button */}
         <Button
           variant="game"
           size="lg"
@@ -419,16 +402,15 @@ export default function Dashboard() {
           Create New Goal
         </Button>
 
-        {/* Active Goals */}
         <GoalList
           title="Active Goals"
           goals={activeGoals}
           onComplete={handleCompleteGoal}
           onDelete={handleDeleteGoal}
+          onEdit={handleEditGoal}
           emptyMessage="No active goals. Create one to start competing!"
         />
 
-        {/* Completed Goals */}
         {completedGoals.length > 0 && (
           <GoalList
             title="Completed"
@@ -438,11 +420,17 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* Create Goal Dialog */}
       <CreateGoalDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onGoalCreated={fetchGoals}
+      />
+
+      <EditGoalDialog
+        goal={editingGoal}
+        open={!!editingGoal}
+        onOpenChange={(open) => !open && setEditingGoal(null)}
+        onGoalUpdated={fetchGoals}
       />
     </div>
   );
