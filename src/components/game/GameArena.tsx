@@ -1,6 +1,6 @@
 /**
  * GameArena Component - Temple Run-style immersive game experience
- * Features continuous action animations, ambient audio, and subtle winner highlighting
+ * Features continuous action animations, ambient audio, and real-time game loop
  */
 
 import { useEffect, useState, useMemo } from "react";
@@ -21,8 +21,11 @@ import { ParallaxBackground } from "./ParallaxBackground";
 import { ObstacleLayer } from "./ObstacleLayer";
 import { SpeedLines } from "./SpeedLines";
 import { ContinuousActionAvatar } from "./ContinuousActionAvatar";
+import { EODCountdown } from "./EODCountdown";
 import { useSoundEffects } from "@/hooks/useSoundEffects";
 import { useAmbientAudio } from "@/hooks/useAmbientAudio";
+import { useGameLoop } from "@/hooks/useGameLoop";
+import { INTENSITY_CONFIGS } from "@/config/game/intensity.config";
 
 interface GameArenaProps {
   theme: ThemeType;
@@ -32,6 +35,7 @@ interface GameArenaProps {
   isActive?: boolean;
   isEndOfDay?: boolean;
   soundEnabled?: boolean;
+  dayEndTime?: string;
 }
 
 export function GameArena({
@@ -42,19 +46,28 @@ export function GameArena({
   isActive = true,
   isEndOfDay = false,
   soundEnabled = true,
+  dayEndTime = "23:00",
 }: GameArenaProps) {
   const [showEffect, setShowEffect] = useState(false);
   const [effectIndex, setEffectIndex] = useState(0);
   const [prevGameState, setPrevGameState] = useState<string | null>(null);
 
+  // Validate theme
+  const validTheme: ThemeType = isValidTheme(theme) ? theme : DEFAULT_THEME;
+
+  // Game loop - the heartbeat of the game
+  const gameLoop = useGameLoop({
+    userPoints,
+    aiPoints,
+    dayEndTime,
+    isActive,
+  });
+
   // Sound effects for events
   const { playSound } = useSoundEffects(soundEnabled);
   
-  // Validate theme
-  const validTheme: ThemeType = isValidTheme(theme) ? theme : DEFAULT_THEME;
-  
-  // Ambient background music
-  const { isPlaying: isAmbientPlaying } = useAmbientAudio(validTheme, soundEnabled, isActive);
+  // Ambient background music with intensity
+  useAmbientAudio(validTheme, soundEnabled, isActive, gameLoop.intensity);
 
   // Get strategies
   const gameStrategy = useMemo(() => getGameStrategy(), []);
@@ -65,6 +78,7 @@ export function GameArena({
   const userSprite = ACTION_SPRITES[validTheme];
   const aiSprite = AI_SPRITES[validTheme];
   const config = THEME_CONFIGS[validTheme];
+  const intensityConfig = INTENSITY_CONFIGS[gameLoop.intensity];
 
   // Calculate game state using strategy
   const gameState = gameStrategy.getGameState(userPoints, aiPoints, isEndOfDay);
@@ -84,25 +98,21 @@ export function GameArena({
     }
 
     if (gameState !== prevGameState) {
-      if (gameState === "victory") {
-        playSound("victory");
-      } else if (gameState === "defeat") {
-        playSound("defeat");
-      } else if (gameState === "userWinning" && prevGameState !== "userWinning") {
-        playSound("userLead");
-      } else if (gameState === "aiWinning" && prevGameState !== "aiWinning") {
-        playSound("aiLead");
-      }
+      if (gameState === "victory") playSound("victory");
+      else if (gameState === "defeat") playSound("defeat");
+      else if (gameState === "userWinning" && prevGameState !== "userWinning") playSound("userLead");
+      else if (gameState === "aiWinning" && prevGameState !== "aiWinning") playSound("aiLead");
       setPrevGameState(gameState);
     }
   }, [gameState, prevGameState, playSound]);
 
-  // Show effects periodically
+  // Show effects periodically - faster at higher intensity
   useEffect(() => {
     if (!isActive && !isEndOfDay) return;
 
     const shouldContinuous = effectsStrategy.shouldShowContinuousEffects(gameState);
-    const interval = shouldContinuous ? 400 : 2500;
+    const baseInterval = shouldContinuous ? 400 : 2500;
+    const interval = baseInterval / intensityConfig.animationSpeed;
 
     const timer = setInterval(() => {
       setShowEffect(true);
@@ -111,15 +121,17 @@ export function GameArena({
     }, interval);
 
     return () => clearInterval(timer);
-  }, [isActive, isEndOfDay, gameState, effectsStrategy]);
+  }, [isActive, isEndOfDay, gameState, effectsStrategy, intensityConfig]);
 
   const currentEffect = effectsStrategy.getEffect(validTheme, gameState, effectIndex);
 
-  // Determine speed intensity based on game state
-  const speedIntensity = userWinning ? "high" : aiWinning ? "low" : "medium";
-
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-border/30">
+    <div 
+      className="relative w-full rounded-2xl overflow-hidden shadow-2xl border border-border/30"
+      style={{
+        filter: `saturate(${1 + intensityConfig.saturationBoost}) contrast(${1 + intensityConfig.contrastBoost})`,
+      }}
+    >
       {/* Background Image */}
       <div
         className="absolute inset-0 bg-cover bg-center transition-transform duration-1000"
@@ -129,7 +141,7 @@ export function GameArena({
       {/* Parallax Scrolling Layers */}
       <ParallaxBackground
         theme={validTheme}
-        speed={config.backgroundSpeed}
+        speed={config.backgroundSpeed * intensityConfig.backgroundSpeed}
         isActive={isActive && !isVictoryState}
         userWinning={userWinning}
         aiWinning={aiWinning}
@@ -139,19 +151,19 @@ export function GameArena({
       <ObstacleLayer
         theme={validTheme}
         isActive={isActive && !isVictoryState}
-        speed={config.characterSpeed}
+        speed={config.characterSpeed * intensityConfig.animationSpeed}
         aiWinning={aiWinning}
       />
 
-      {/* Speed Lines - on both sides for racing feel */}
+      {/* Speed Lines */}
       <div className="absolute left-4 md:left-8 top-1/2 -translate-y-1/2 z-5">
-        <SpeedLines isActive={isActive && !isVictoryState} intensity={speedIntensity} position="left" />
+        <SpeedLines isActive={isActive && !isVictoryState} intensity={gameLoop.intensity === "critical" ? "high" : gameLoop.intensity} position="left" />
       </div>
       <div className="absolute right-4 md:right-8 top-1/2 -translate-y-1/2 z-5">
-        <SpeedLines isActive={isActive && !isVictoryState} intensity={speedIntensity} position="right" />
+        <SpeedLines isActive={isActive && !isVictoryState} intensity={gameLoop.intensity === "critical" ? "high" : gameLoop.intensity} position="right" />
       </div>
 
-      {/* Animated background overlay - subtle gradient */}
+      {/* Gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/30 to-transparent" />
 
       {/* Victory/Defeat Overlay */}
@@ -168,30 +180,22 @@ export function GameArena({
 
       {/* Game Content */}
       <div className="relative h-72 md:h-80 p-4 flex flex-col justify-between">
-        {/* Status Bar - Simplified, no blocking popups */}
+        {/* Status Bar */}
         <div className="flex justify-between items-start z-10">
           <div className="bg-background/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-border/30 shadow-lg">
             <p className="text-xs font-medium text-foreground/80">{config.messages.action}</p>
           </div>
           
-          {/* Subtle status indicator - no red popups */}
-          <motion.div
-            className="bg-background/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-border/30 shadow-lg"
-            animate={{
-              borderColor: userWinning 
-                ? "hsl(var(--primary) / 0.5)" 
-                : aiWinning 
-                ? "hsl(var(--muted) / 0.5)" 
-                : "hsl(var(--border) / 0.3)",
-            }}
-          >
-            <p className="text-xs font-medium text-foreground/80">
-              {statusMessage}
-            </p>
-          </motion.div>
+          {/* EOD Countdown */}
+          <EODCountdown
+            formattedTime={gameLoop.formattedTimeToEOD}
+            intensity={gameLoop.intensity}
+            intensityValue={gameLoop.intensityValue}
+            pulse={gameLoop.pulse}
+          />
         </div>
 
-        {/* Battle Arena - Hide when victory state */}
+        {/* Battle Arena */}
         {!isVictoryState && (
           <div className="relative flex-1 flex items-center justify-center mt-2">
             {/* Effects Layer */}
@@ -212,18 +216,16 @@ export function GameArena({
             <motion.div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10"
               animate={{ scale: [1, 1.05, 1] }}
-              transition={{ repeat: Infinity, duration: 2 }}
+              transition={{ repeat: Infinity, duration: 2 / intensityConfig.animationSpeed }}
             >
               <div className="bg-background/90 backdrop-blur-sm p-[2px] rounded-full border border-border/50">
                 <div className="bg-background rounded-full px-3 py-1">
-                  <span className="font-display font-bold text-sm text-foreground/70">
-                    VS
-                  </span>
+                  <span className="font-display font-bold text-sm text-foreground/70">VS</span>
                 </div>
               </div>
             </motion.div>
 
-            {/* User Character - Left Side with continuous action */}
+            {/* User Character */}
             <div className="absolute left-4 md:left-12">
               <ContinuousActionAvatar
                 theme={validTheme}
@@ -233,10 +235,13 @@ export function GameArena({
                 isLosing={aiWinning}
                 isActive={isActive}
                 scoreDelta={scoreDelta}
+                intensity={gameLoop.intensity}
+                pulse={gameLoop.pulse}
+                beatCount={gameLoop.beatCount}
               />
             </div>
 
-            {/* AI Character - Right Side with continuous action */}
+            {/* AI Character */}
             <div className="absolute right-4 md:right-12">
               <ContinuousActionAvatar
                 theme={validTheme}
@@ -246,19 +251,19 @@ export function GameArena({
                 isLosing={userWinning}
                 isActive={isActive}
                 scoreDelta={-scoreDelta}
+                intensity={gameLoop.intensity}
+                pulse={gameLoop.pulse}
+                beatCount={gameLoop.beatCount}
               />
             </div>
           </div>
         )}
 
-        {/* Score Bar - Clean, minimal */}
+        {/* Score Bar */}
         <div className="flex justify-between items-center bg-background/80 backdrop-blur-sm rounded-xl p-3 border border-border/30 z-10">
-          {/* User Score */}
           <div className="flex items-center gap-3">
             <motion.div
-              className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition-colors ${
-                userWinning ? "border-primary" : "border-border/50"
-              }`}
+              className={`w-10 h-10 rounded-xl overflow-hidden border-2 ${userWinning ? "border-primary" : "border-border/50"}`}
               animate={userWinning ? { scale: [1, 1.05, 1] } : {}}
               transition={{ repeat: Infinity, duration: 1 }}
             >
@@ -266,58 +271,31 @@ export function GameArena({
             </motion.div>
             <div>
               <p className="text-xs text-muted-foreground">Your Score</p>
-              <p className={`font-display font-bold text-lg ${
-                userWinning ? "text-primary" : "text-foreground"
-              }`}>
-                {userPoints}
-                <span className="text-xs font-normal text-muted-foreground ml-1">pts</span>
+              <p className={`font-display font-bold text-lg ${userWinning ? "text-primary" : "text-foreground"}`}>
+                {userPoints}<span className="text-xs font-normal text-muted-foreground ml-1">pts</span>
               </p>
             </div>
           </div>
 
-          {/* Progress Bar - Visual race progress */}
           <div className="flex-1 mx-4 h-3 bg-muted/50 rounded-full overflow-hidden relative">
-            {/* Track markers */}
             <div className="absolute inset-0 flex justify-between px-1">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="w-px h-full bg-border/30" />
-              ))}
+              {[...Array(5)].map((_, i) => (<div key={i} className="w-px h-full bg-border/30" />))}
             </div>
             <div className="h-full flex relative z-10">
-              <motion.div
-                className="bg-primary/80"
-                initial={{ width: "50%" }}
-                animate={{
-                  width: `${Math.max(10, (userPoints / (userPoints + aiPoints || 1)) * 100)}%`,
-                }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-              />
-              <motion.div
-                className="bg-muted-foreground/40"
-                initial={{ width: "50%" }}
-                animate={{
-                  width: `${Math.max(10, (aiPoints / (userPoints + aiPoints || 1)) * 100)}%`,
-                }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-              />
+              <motion.div className="bg-primary/80" animate={{ width: `${Math.max(10, (userPoints / (userPoints + aiPoints || 1)) * 100)}%` }} transition={{ duration: 0.5 }} />
+              <motion.div className="bg-muted-foreground/40" animate={{ width: `${Math.max(10, (aiPoints / (userPoints + aiPoints || 1)) * 100)}%` }} transition={{ duration: 0.5 }} />
             </div>
           </div>
 
-          {/* AI Score */}
           <div className="flex items-center gap-3">
             <div className="text-right">
               <p className="text-xs text-muted-foreground">AI Score</p>
-              <p className={`font-display font-bold text-lg ${
-                aiWinning ? "text-muted-foreground" : "text-foreground"
-              }`}>
-                {aiPoints}
-                <span className="text-xs font-normal text-muted-foreground ml-1">pts</span>
+              <p className={`font-display font-bold text-lg ${aiWinning ? "text-muted-foreground" : "text-foreground"}`}>
+                {aiPoints}<span className="text-xs font-normal text-muted-foreground ml-1">pts</span>
               </p>
             </div>
             <motion.div
-              className={`w-10 h-10 rounded-xl overflow-hidden border-2 transition-colors ${
-                aiWinning ? "border-muted-foreground" : "border-border/50"
-              }`}
+              className={`w-10 h-10 rounded-xl overflow-hidden border-2 ${aiWinning ? "border-muted-foreground" : "border-border/50"}`}
               animate={aiWinning ? { scale: [1, 1.05, 1] } : {}}
               transition={{ repeat: Infinity, duration: 1 }}
             >
@@ -330,6 +308,5 @@ export function GameArena({
   );
 }
 
-// Re-export types and assets for backward compatibility
 export type { ThemeType, AvatarType };
 export { BACKGROUNDS as backgrounds, AVATARS as avatars } from "@/config/game";
