@@ -1,277 +1,361 @@
 /**
- * Ambient Audio Hook - Continuous background music per theme
- * Uses Web Audio API for procedural audio generation
+ * useAmbientAudio - Continuous background music with intensity-based dynamics
+ * Each theme has unique sound character that responds to game state
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { ThemeType } from "@/config/game";
+import { IntensityLevel } from "./useGameLoop";
+import { INTENSITY_CONFIGS } from "@/config/game/intensity.config";
 
 interface AudioNodes {
-  oscillators: OscillatorNode[];
-  gainNodes: GainNode[];
-  filters: BiquadFilterNode[];
+  context: AudioContext;
+  masterGain: GainNode;
+  filter: BiquadFilterNode;
+  compressor: DynamicsCompressorNode;
 }
 
-// Theme-specific audio configurations
-const THEME_AUDIO_CONFIGS: Record<ThemeType, {
-  baseFrequency: number;
-  tempo: number;
+interface ThemeAudioConfig {
+  baseFreq: number;
+  scale: number[];
   waveform: OscillatorType;
-  style: "rhythmic" | "ambient" | "tension" | "action";
-  notes: number[];
-  bassNotes: number[];
-}> = {
+  bassFreq: number;
+  style: "rhythmic" | "ambient" | "action" | "tension";
+  beatPattern: number[];
+}
+
+const THEME_AUDIO_CONFIGS: Record<ThemeType, ThemeAudioConfig> = {
   forest: {
-    baseFrequency: 220, // A3
-    tempo: 140, // Fast runner tempo
-    waveform: "sine",
+    baseFreq: 220,
+    scale: [0, 2, 4, 5, 7, 9, 11, 12], // Major scale - uplifting
+    waveform: "sawtooth",
+    bassFreq: 55,
     style: "rhythmic",
-    notes: [220, 261.63, 293.66, 329.63, 349.23, 392, 440], // A minor scale
-    bassNotes: [110, 130.81, 146.83, 164.81],
+    beatPattern: [1, 0, 1, 0, 1, 1, 0, 1], // Running rhythm
   },
   coding: {
-    baseFrequency: 330, // E4
-    tempo: 120,
-    waveform: "sawtooth",
+    baseFreq: 330,
+    scale: [0, 3, 5, 7, 10, 12], // Minor pentatonic - techy
+    waveform: "square",
+    bassFreq: 65,
     style: "ambient",
-    notes: [329.63, 369.99, 415.30, 466.16, 523.25, 587.33], // Electronic/synth
-    bassNotes: [82.41, 98, 110, 123.47],
+    beatPattern: [1, 0, 0, 1, 0, 0, 1, 0], // Data pulse
   },
   ninja: {
-    baseFrequency: 196, // G3
-    tempo: 100,
+    baseFreq: 196,
+    scale: [0, 2, 3, 5, 7, 8, 10, 12], // Minor scale - dramatic
     waveform: "triangle",
+    bassFreq: 49,
     style: "action",
-    notes: [196, 220, 246.94, 293.66, 329.63, 392], // Japanese pentatonic
-    bassNotes: [98, 110, 130.81, 146.83],
+    beatPattern: [1, 1, 0, 1, 1, 0, 1, 0], // Combat rhythm
   },
   agent: {
-    baseFrequency: 185, // F#3
-    tempo: 110,
-    waveform: "square",
+    baseFreq: 262,
+    scale: [0, 1, 4, 5, 7, 8, 11, 12], // Harmonic minor - suspense
+    waveform: "sine",
+    bassFreq: 58,
     style: "tension",
-    notes: [185, 220, 246.94, 277.18, 329.63, 369.99], // Spy/tension scale
-    bassNotes: [92.5, 110, 123.47, 138.59],
+    beatPattern: [1, 0, 0, 0, 1, 0, 0, 0], // Heartbeat
   },
 };
 
-export function useAmbientAudio(theme: ThemeType, enabled: boolean, isActive: boolean) {
-  const audioContextRef = useRef<AudioContext | null>(null);
+export function useAmbientAudio(
+  theme: ThemeType,
+  enabled: boolean = true,
+  isActive: boolean = true,
+  intensity: IntensityLevel = "low"
+) {
   const audioNodesRef = useRef<AudioNodes | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const noteIndexRef = useRef(0);
-  const beatCountRef = useRef(0);
+  const beatIndexRef = useRef(0);
+  const sequenceIndexRef = useRef(0);
 
   // Initialize audio context
   const initAudio = useCallback(() => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    if (audioNodesRef.current) return audioNodesRef.current;
+
+    try {
+      const context = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.value = -24;
+      compressor.knee.value = 30;
+      compressor.ratio.value = 12;
+      compressor.attack.value = 0.003;
+      compressor.release.value = 0.25;
+      
+      const filter = context.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 1000;
+      filter.Q.value = 1;
+      
+      const masterGain = context.createGain();
+      masterGain.gain.value = 0;
+      
+      filter.connect(compressor);
+      compressor.connect(masterGain);
+      masterGain.connect(context.destination);
+      
+      audioNodesRef.current = { context, masterGain, filter, compressor };
+      return audioNodesRef.current;
+    } catch (e) {
+      console.warn("Web Audio not supported");
+      return null;
     }
-    if (audioContextRef.current.state === "suspended") {
-      audioContextRef.current.resume();
-    }
-    return audioContextRef.current;
   }, []);
 
-  // Play a note with envelope
-  const playNote = useCallback((frequency: number, duration: number, volume: number = 0.1, type: OscillatorType = "sine") => {
-    const ctx = audioContextRef.current;
-    if (!ctx) return;
+  // Play a melodic note
+  const playNote = useCallback((
+    nodes: AudioNodes,
+    frequency: number,
+    duration: number,
+    volume: number,
+    waveform: OscillatorType,
+    delay: number = 0
+  ) => {
+    const { context, filter } = nodes;
+    const now = context.currentTime + delay;
 
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    const filter = ctx.createBiquadFilter();
-
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-    filter.type = "lowpass";
-    filter.frequency.setValueAtTime(2000, ctx.currentTime);
-
+    const osc = context.createOscillator();
+    const noteGain = context.createGain();
+    
+    osc.type = waveform;
+    osc.frequency.setValueAtTime(frequency, now);
+    
     // ADSR envelope
-    const now = ctx.currentTime;
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(volume, now + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(volume * 0.7, now + duration * 0.3);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    oscillator.connect(filter);
-    filter.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    oscillator.start(now);
-    oscillator.stop(now + duration);
+    noteGain.gain.setValueAtTime(0, now);
+    noteGain.gain.linearRampToValueAtTime(volume, now + 0.02);
+    noteGain.gain.exponentialRampToValueAtTime(volume * 0.7, now + duration * 0.3);
+    noteGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    
+    osc.connect(noteGain);
+    noteGain.connect(filter);
+    
+    osc.start(now);
+    osc.stop(now + duration);
   }, []);
 
   // Play bass note
-  const playBass = useCallback((frequency: number, duration: number) => {
-    const ctx = audioContextRef.current;
-    if (!ctx) return;
+  const playBass = useCallback((
+    nodes: AudioNodes,
+    frequency: number,
+    duration: number,
+    volume: number
+  ) => {
+    const { context, filter } = nodes;
+    const now = context.currentTime;
 
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-
-    oscillator.type = "sine";
-    oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
-
-    const now = ctx.currentTime;
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(0.15, now + 0.05);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-
-    oscillator.start(now);
-    oscillator.stop(now + duration);
+    const osc = context.createOscillator();
+    const bassGain = context.createGain();
+    
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(frequency, now);
+    
+    bassGain.gain.setValueAtTime(0, now);
+    bassGain.gain.linearRampToValueAtTime(volume * 0.8, now + 0.05);
+    bassGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    
+    osc.connect(bassGain);
+    bassGain.connect(filter);
+    
+    osc.start(now);
+    osc.stop(now + duration);
   }, []);
 
-  // Generate rhythm pattern based on theme style
-  const playBeat = useCallback(() => {
-    const config = THEME_AUDIO_CONFIGS[theme];
-    beatCountRef.current++;
+  // Main beat/sequence player
+  const playBeat = useCallback((config: ThemeAudioConfig, nodes: AudioNodes, intensityConfig: typeof INTENSITY_CONFIGS["low"]) => {
+    const { baseFreq, scale, waveform, bassFreq, beatPattern, style } = config;
+    const beatActive = beatPattern[beatIndexRef.current % beatPattern.length];
+    const noteVolume = intensityConfig.audioVolume * 0.3;
     
-    const beatInMeasure = beatCountRef.current % 8;
-    const noteIndex = noteIndexRef.current % config.notes.length;
+    // Update filter based on intensity
+    nodes.filter.frequency.setTargetAtTime(
+      intensityConfig.audioFilterFreq,
+      nodes.context.currentTime,
+      0.1
+    );
 
-    switch (config.style) {
-      case "rhythmic": // Forest - Temple Run style
-        // Driving rhythm
-        if (beatInMeasure === 0 || beatInMeasure === 4) {
-          playBass(config.bassNotes[beatCountRef.current % config.bassNotes.length], 0.3);
-        }
-        if (beatInMeasure % 2 === 0) {
-          playNote(config.notes[noteIndex], 0.15, 0.08, "sine");
-        }
-        // Melodic accent on certain beats
-        if (beatInMeasure === 2 || beatInMeasure === 6) {
-          playNote(config.notes[(noteIndex + 2) % config.notes.length] * 2, 0.1, 0.05, "sine");
-        }
-        break;
+    if (beatActive) {
+      // Play bass on downbeat
+      if (beatIndexRef.current % 4 === 0) {
+        playBass(nodes, bassFreq, 0.4, noteVolume * 1.2);
+      }
 
-      case "ambient": // Coding - Synth/futuristic
-        if (beatInMeasure % 4 === 0) {
-          playBass(config.bassNotes[beatCountRef.current % config.bassNotes.length], 0.5);
-          playNote(config.notes[noteIndex], 0.4, 0.06, "sawtooth");
-        }
-        // Arpeggiated synth
-        if (beatInMeasure % 2 === 1) {
-          playNote(config.notes[(noteIndex + 1) % config.notes.length] * 1.5, 0.2, 0.04, "square");
-        }
-        break;
+      // Style-specific patterns
+      switch (style) {
+        case "rhythmic": // Forest - running music
+          const runNote = scale[sequenceIndexRef.current % scale.length];
+          playNote(nodes, baseFreq * Math.pow(2, runNote / 12), 0.15, noteVolume, waveform);
+          if (beatIndexRef.current % 2 === 0) {
+            playNote(nodes, baseFreq * 2 * Math.pow(2, runNote / 12), 0.08, noteVolume * 0.5, "sine", 0.08);
+          }
+          break;
 
-      case "action": // Ninja - Martial arts/dojo
-        // Taiko-style rhythm
-        if (beatInMeasure === 0) {
-          playBass(config.bassNotes[0], 0.4);
-          playNote(config.notes[0], 0.3, 0.1, "triangle");
-        }
-        if (beatInMeasure === 3 || beatInMeasure === 5) {
-          playNote(config.notes[noteIndex], 0.15, 0.07, "triangle");
-        }
-        // Shamisen-style accent
-        if (beatInMeasure === 7) {
-          playNote(config.notes[(noteIndex + 3) % config.notes.length] * 2, 0.1, 0.05, "sawtooth");
-        }
-        break;
+        case "ambient": // Coding - data sounds
+          const codeNote = scale[(sequenceIndexRef.current * 3) % scale.length];
+          playNote(nodes, baseFreq * Math.pow(2, codeNote / 12), 0.3, noteVolume * 0.7, waveform);
+          // Blips
+          if (Math.random() > 0.6) {
+            playNote(nodes, baseFreq * 4, 0.05, noteVolume * 0.3, "square", Math.random() * 0.2);
+          }
+          break;
 
-      case "tension": // Agent - Spy theme
-        // James Bond-style tension
-        if (beatInMeasure === 0 || beatInMeasure === 4) {
-          playBass(config.bassNotes[beatCountRef.current % config.bassNotes.length], 0.4);
-        }
-        // Staccato spy notes
-        if (beatInMeasure % 2 === 0) {
-          playNote(config.notes[noteIndex], 0.1, 0.06, "square");
-        }
-        // Tension build
-        if (beatInMeasure === 3) {
-          playNote(config.notes[(noteIndex + 4) % config.notes.length], 0.2, 0.04, "sawtooth");
-        }
-        break;
+        case "action": // Ninja - combat music
+          const ninjaNote = scale[sequenceIndexRef.current % scale.length];
+          playNote(nodes, baseFreq * Math.pow(2, ninjaNote / 12), 0.12, noteVolume, waveform);
+          // Percussion hits
+          if (beatIndexRef.current % 2 === 1) {
+            const hitOsc = nodes.context.createOscillator();
+            const hitGain = nodes.context.createGain();
+            hitOsc.type = "sawtooth";
+            hitOsc.frequency.setValueAtTime(100, nodes.context.currentTime);
+            hitOsc.frequency.exponentialRampToValueAtTime(50, nodes.context.currentTime + 0.1);
+            hitGain.gain.setValueAtTime(noteVolume * 0.5, nodes.context.currentTime);
+            hitGain.gain.exponentialRampToValueAtTime(0.001, nodes.context.currentTime + 0.1);
+            hitOsc.connect(hitGain);
+            hitGain.connect(nodes.filter);
+            hitOsc.start();
+            hitOsc.stop(nodes.context.currentTime + 0.1);
+          }
+          break;
+
+        case "tension": // Agent - suspense
+          const agentNote = scale[(sequenceIndexRef.current * 2) % scale.length];
+          playNote(nodes, baseFreq * Math.pow(2, agentNote / 12), 0.5, noteVolume * 0.6, waveform);
+          // Tension pad
+          if (beatIndexRef.current % 8 === 0) {
+            playNote(nodes, baseFreq * 0.5, 2, noteVolume * 0.3, "sine");
+          }
+          break;
+      }
+      
+      sequenceIndexRef.current++;
     }
 
-    // Advance note index for variety
-    if (beatInMeasure === 7) {
-      noteIndexRef.current = (noteIndexRef.current + 1) % config.notes.length;
-    }
-  }, [theme, playNote, playBass]);
+    beatIndexRef.current++;
+  }, [playNote, playBass]);
 
-  // Start ambient audio loop
+  // Start audio playback
   const startAudio = useCallback(() => {
-    if (isPlaying || !enabled) return;
+    const nodes = initAudio();
+    if (!nodes) return;
 
-    const ctx = initAudio();
-    if (!ctx) return;
+    // Resume context if suspended
+    if (nodes.context.state === "suspended") {
+      nodes.context.resume();
+    }
 
     const config = THEME_AUDIO_CONFIGS[theme];
-    const beatInterval = (60 / config.tempo) * 1000 / 2; // Eighth notes
-
-    intervalRef.current = setInterval(playBeat, beatInterval);
+    const intensityConfig = INTENSITY_CONFIGS[intensity];
+    
+    // Fade in
+    nodes.masterGain.gain.setTargetAtTime(intensityConfig.audioVolume, nodes.context.currentTime, 0.3);
+    
+    // Calculate beat interval from tempo
+    const beatInterval = 60000 / intensityConfig.audioTempo / 2; // 8th notes
+    
+    // Clear existing interval
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    
+    // Start beat loop
+    intervalRef.current = setInterval(() => {
+      if (audioNodesRef.current) {
+        playBeat(config, audioNodesRef.current, intensityConfig);
+      }
+    }, beatInterval);
+    
     setIsPlaying(true);
-  }, [enabled, initAudio, isPlaying, playBeat, theme]);
+  }, [theme, intensity, initAudio, playBeat]);
 
-  // Stop ambient audio
+  // Stop audio playback
   const stopAudio = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    setIsPlaying(false);
-    noteIndexRef.current = 0;
-    beatCountRef.current = 0;
-  }, []);
-
-  // Handle theme changes - restart audio with new theme
-  useEffect(() => {
-    if (isPlaying) {
-      stopAudio();
-      if (enabled && isActive) {
-        // Small delay before restarting with new theme
-        const timeout = setTimeout(startAudio, 100);
-        return () => clearTimeout(timeout);
-      }
+    
+    if (audioNodesRef.current) {
+      audioNodesRef.current.masterGain.gain.setTargetAtTime(0, audioNodesRef.current.context.currentTime, 0.5);
     }
-  }, [theme]);
+    
+    setIsPlaying(false);
+  }, []);
 
   // Handle enabled/active state changes
   useEffect(() => {
-    if (enabled && isActive && !isPlaying) {
+    if (enabled && isActive) {
       startAudio();
-    } else if ((!enabled || !isActive) && isPlaying) {
+    } else {
       stopAudio();
     }
-  }, [enabled, isActive, isPlaying, startAudio, stopAudio]);
 
-  // Initialize on user interaction
+    return () => {
+      stopAudio();
+    };
+  }, [enabled, isActive, startAudio, stopAudio]);
+
+  // Update tempo/volume when intensity changes
+  useEffect(() => {
+    if (!isPlaying || !audioNodesRef.current) return;
+    
+    const intensityConfig = INTENSITY_CONFIGS[intensity];
+    const config = THEME_AUDIO_CONFIGS[theme];
+    
+    // Update master volume
+    audioNodesRef.current.masterGain.gain.setTargetAtTime(
+      intensityConfig.audioVolume,
+      audioNodesRef.current.context.currentTime,
+      0.2
+    );
+    
+    // Restart with new tempo
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+    
+    const beatInterval = 60000 / intensityConfig.audioTempo / 2;
+    intervalRef.current = setInterval(() => {
+      if (audioNodesRef.current) {
+        playBeat(config, audioNodesRef.current, intensityConfig);
+      }
+    }, beatInterval);
+  }, [intensity, theme, isPlaying, playBeat]);
+
+  // Reinitialize on user interaction (for browsers that block autoplay)
   useEffect(() => {
     const handleInteraction = () => {
-      initAudio();
-      if (enabled && isActive) {
+      if (enabled && isActive && audioNodesRef.current?.context.state === "suspended") {
+        audioNodesRef.current.context.resume();
         startAudio();
       }
     };
 
     window.addEventListener("click", handleInteraction, { once: true });
+    window.addEventListener("keydown", handleInteraction, { once: true });
     window.addEventListener("touchstart", handleInteraction, { once: true });
 
     return () => {
       window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
       window.removeEventListener("touchstart", handleInteraction);
-      stopAudio();
     };
-  }, [enabled, isActive, initAudio, startAudio, stopAudio]);
+  }, [enabled, isActive, startAudio]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopAudio();
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (audioNodesRef.current) {
+        audioNodesRef.current.context.close();
+        audioNodesRef.current = null;
       }
     };
-  }, [stopAudio]);
+  }, []);
 
   return {
     isPlaying,

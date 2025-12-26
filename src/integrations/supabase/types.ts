@@ -76,6 +76,7 @@ export type Database = {
           longest_streak: number | null
           notification_time: string | null
           sound_enabled: boolean | null
+          timezone: string | null
           total_points: number | null
           updated_at: string
           user_id: string
@@ -94,6 +95,7 @@ export type Database = {
           longest_streak?: number | null
           notification_time?: string | null
           sound_enabled?: boolean | null
+          timezone?: string | null
           total_points?: number | null
           updated_at?: string
           user_id: string
@@ -112,6 +114,7 @@ export type Database = {
           longest_streak?: number | null
           notification_time?: string | null
           sound_enabled?: boolean | null
+          timezone?: string | null
           total_points?: number | null
           updated_at?: string
           user_id?: string
@@ -125,6 +128,17 @@ export type Database = {
     }
     Functions: {
       check_all_overdue_goals: { Args: never; Returns: undefined }
+      check_goal_deadline: {
+        Args: {
+          goal_created_at: string
+          goal_due_date: string
+          goal_due_time: string
+          goal_type: string
+          user_day_end_time: string
+          user_timezone: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
